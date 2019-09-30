@@ -1,0 +1,107 @@
+from openpyxl import load_workbook
+from openpyxl.styles import Fill, Color, PatternFill
+from shutil import copyfile
+import openpyxl,re, os
+
+
+def match_pattern(row):
+    '''
+    Поиск ячеек совпадающих со значениями. Нужно для их раскраски.
+    '''
+    pattern_predone = 'На согласовании закрытия'
+    pattern_done = 'Закрыт'
+    if row == pattern_predone or row == pattern_done:
+        return True
+
+    
+def progress_line(current, summ):
+    if current in range (1, int(summ), int(summ/20)):
+        print('|', end='')
+
+
+input('Файл для импорта должен называться imp.xlsx и выгружен из обработки "Запуск внешних обработок -> Почта России -> Контроль стационарного ремонта\", сохранен в xlsx без первого столбца \"картина\". Продолжить? \n')
+
+#загружаем входной файл (экспорт из обработки Олега)
+copyfile('imp.xlsx', 'tmp.xlsx')            # Делаем копию файла с которым будем работать на случай если он открыт
+wb = load_workbook('tmp.xlsx')  
+ws = wb['TDSheet']                          #Отсюда берем таблицу входную. 
+pattern_ksr = r'Контроль стационарного ремонта по заявке...........'
+new_table=[]                                #Сюда будем новую таблицу сохранять
+print('\nВсего строк заявок: ', int((ws.max_row-1)/2))
+
+
+#Перебираем активную таблицу
+print('\nCортирую заявки \n______Loading_______')
+counter = 1
+for row in ws.values:
+
+    if re.match(pattern_ksr, row[8]):       #Ищем КСР по паттерну
+        rp = row[3][:9:]                    #Берем головную RP от КСР (боевая заявка)
+        for rows in ws.values:
+            rpchild=rows[3][-9::]           #Дочерняя РП для КСР
+            if rp==rpchild:
+                new_table.append(row)
+                new_table.append(rows)
+                counter +=1
+                progress_line(counter, int((ws.max_row-1)/2))
+print('\n','¯'*18)
+
+#Все КСР сохранены в new_table. Нужно сохранить их в новый лист
+wse = wb.create_sheet('Export')
+header = ['Номер' , 'Дата', 'Дата изменения', 'Номер по системе клиента',
+          'Номер по системе клиента2', 'Клиент', 'Инициатор', 'Тип',
+          'Описание', 'Ответственный', 'Состояние']
+wse.append(header)
+for row in new_table:    
+    wse.append((row))
+try:
+    wb.save('exp.xlsx')
+    wb.close()
+except:
+    os.remove('tmp.xlsx')
+    input('файл exp.xlsx открыт другой программой. Необходимо закрыть.')
+
+
+#Раскрасим строки. Переписать при наличии времени
+print('\nРаскрашиваю дубли \n______Loading_______ ')
+wb = load_workbook('exp.xlsx')
+wsf = wb['Export']
+fill = PatternFill("solid", fgColor="509090")
+fillw = PatternFill("solid", fgColor="ffffff")
+fillr = PatternFill("solid", fgColor="fa8072")
+counter = 1
+count_paint_progress = 1
+firstline = True
+for row in wsf:     
+    if firstline:
+        firstline = False
+    elif counter == 1 or counter == 2:       
+        for cel in row:
+            cel.fill = fill
+            if match_pattern(cel.value):
+                cel.fill = fillr
+        counter += 1
+    elif counter == 3:
+        for cel in row:
+            cel.fill = fillw
+            if match_pattern(cel.value):
+                cel.fill = fillr
+        counter = counter+1
+    elif counter == 4:
+        for cel in row:
+            cel.fill = fillw
+            if match_pattern(cel.value):
+                cel.fill = fillr
+        counter = 1
+    count_paint_progress  +=1 
+    progress_line(count_paint_progress, wsf.max_row-1) 
+print('\n','¯'*18)
+
+#Сохраняем результат
+wb.save('exp.xlsx')
+wb.close
+os.remove('tmp.xlsx')
+input('Готово. Можно открывать \'exp.xlsx\'')
+
+
+#dxf = DifferentialStyle(font=Font(bold=True), fill=PatternFill(start_color='EE1111', end_color='EE1111'))
